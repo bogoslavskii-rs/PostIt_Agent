@@ -1,0 +1,40 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: postit-agent-app
+    env_file:
+      - .env
+    environment:
+      POSTIT_PUBLIC_BASE_URL: http://localhost:8000
+      POSTIT_DATABASE_PATH: /app/data/postit_agent.sqlite3
+      POSTIT_STORAGE_DIR: /app/data/storage
+      POSTIT_EXPORTS_DIR: /app/data/exports
+      POSTIT_FEEDS_DIR: /app/data/feeds
+      POSTIT_AI_PROVIDER: ${POSTIT_AI_PROVIDER:-mock}
+      POSTIT_OLLAMA_BASE_URL: ${POSTIT_OLLAMA_BASE_URL:-http://ollama:11434}
+      POSTIT_OLLAMA_MODEL: ${POSTIT_OLLAMA_MODEL:-qwen2.5:7b}
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:8000/health'))['status'])"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  ollama:
+    image: ollama/ollama
+    container_name: postit-agent-ollama
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ollama_data:
+
