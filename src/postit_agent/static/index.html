@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PostIt Agent</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="grain"></div>
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+
+    <main class="shell">
+      <section class="hero">
+        <div class="eyebrow">AI Realtor Listing App</div>
+        <h1>Снял. Надиктовал. Проверил. Выгрузил на площадки.</h1>
+        <p class="lead">
+          Python-first MVP для риелтора “в поле”: единая карточка объекта, AI-экстрактор, feed-адаптеры,
+          ZIP-экспорт и готовый слой под `Ollama`.
+        </p>
+        <div class="hero-grid">
+          <article class="metric-card">
+            <span>Время на объект</span>
+            <strong>2-5 минут</strong>
+          </article>
+          <article class="metric-card">
+            <span>Площадки</span>
+            <strong>Авито, ЦИАН, Яндекс, Юла, Домклик</strong>
+          </article>
+          <article class="metric-card">
+            <span>AI-режим</span>
+            <strong>`mock` сейчас, `ollama` в один env</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="phone-stage">
+        <div class="phone-topbar">
+          <div>
+            <div class="product-name">PostIt Agent</div>
+            <div class="product-subtitle">Mobile web-shell for MVP demo</div>
+          </div>
+          <div id="session-badge" class="status-pill">Гость</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>1. Авторизация</h2>
+            <span>Регистрация или логин</span>
+          </div>
+          <form id="auth-form" class="stack-form">
+            <input id="auth-email" type="email" placeholder="E-mail" required />
+            <input id="auth-password" type="password" placeholder="Пароль" minlength="8" required />
+            <input id="auth-phone" type="tel" placeholder="Телефон" />
+            <div class="action-row">
+              <button type="button" id="register-button" class="btn btn-primary">Создать аккаунт</button>
+              <button type="button" id="login-button" class="btn btn-ghost">Войти</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>2. Профиль риелтора</h2>
+            <span>Контакты и фид-режимы</span>
+          </div>
+          <form id="profile-form" class="stack-form">
+            <input id="profile-name" type="text" placeholder="Имя риелтора" />
+            <input id="profile-agency" type="text" placeholder="Агентство" />
+            <input id="profile-city" type="text" placeholder="Город" />
+            <input id="profile-contact-phone" type="tel" placeholder="Контактный телефон" />
+            <input id="profile-contact-email" type="email" placeholder="Контактный e-mail" />
+            <textarea id="profile-bio" rows="2" placeholder="Короткое позиционирование"></textarea>
+            <div class="toggle-grid">
+              <label><input id="toggle-avito" type="checkbox" /> Avito autoload</label>
+              <label><input id="toggle-cian" type="checkbox" checked /> CIAN feed</label>
+              <label><input id="toggle-yandex" type="checkbox" checked /> Yandex feed</label>
+              <label><input id="toggle-youla" type="checkbox" checked /> Youla autoload</label>
+              <label><input id="toggle-domclick" type="checkbox" /> Domclick feed</label>
+            </div>
+            <button type="submit" class="btn btn-secondary">Сохранить профиль</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>3. Карточка объекта</h2>
+            <span>База под все площадки</span>
+          </div>
+          <form id="property-form" class="stack-form">
+            <div class="two-col">
+              <input id="property-city" type="text" placeholder="Город" required />
+              <input id="property-street" type="text" placeholder="Улица" required />
+            </div>
+            <div class="two-col">
+              <input id="property-house" type="text" placeholder="Дом" />
+              <input id="property-apartment" type="text" placeholder="Квартира" />
+            </div>
+            <div class="two-col">
+              <input id="property-price" type="number" placeholder="Цена, ₽" />
+              <input id="property-rooms" type="number" placeholder="Комнат" />
+            </div>
+            <div class="two-col">
+              <input id="property-area-total" type="number" step="0.1" placeholder="Общая площадь" />
+              <input id="property-area-kitchen" type="number" step="0.1" placeholder="Кухня" />
+            </div>
+            <div class="two-col">
+              <input id="property-floor" type="number" placeholder="Этаж" />
+              <input id="property-floors-total" type="number" placeholder="Этажность" />
+            </div>
+            <div class="two-col">
+              <input id="property-building-type" type="text" placeholder="Тип дома" />
+              <input id="property-renovation" type="text" placeholder="Ремонт" />
+            </div>
+            <label class="checkbox-line">
+              <input id="property-confirmed" type="checkbox" />
+              Карточка подтверждена и готова к валидации
+            </label>
+            <button type="submit" class="btn btn-primary">Создать объект</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>4. Фото и голос</h2>
+            <span>Импорт и AI-пайплайн</span>
+          </div>
+          <div class="stack-form">
+            <input id="photo-files" type="file" accept="image/*" multiple />
+            <button id="upload-photos-button" class="btn btn-ghost" type="button">Загрузить фото</button>
+            <textarea id="voice-transcript" rows="5" placeholder="Надиктуй факты об объекте или вставь транскрипт сюда"></textarea>
+            <button id="upload-voice-button" class="btn btn-secondary" type="button">Сохранить голосовую заметку</button>
+            <button id="extract-button" class="btn btn-ghost" type="button">Извлечь поля из речи</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>5. Генерация и публикация</h2>
+            <span>Копирайтинг, валидация, feed/export</span>
+          </div>
+          <div class="stack-form">
+            <div class="toggle-grid">
+              <label><input class="platform-toggle" type="checkbox" value="avito" checked /> Avito</label>
+              <label><input class="platform-toggle" type="checkbox" value="cian" checked /> CIAN</label>
+              <label><input class="platform-toggle" type="checkbox" value="yandex_realty" checked /> Yandex</label>
+              <label><input class="platform-toggle" type="checkbox" value="youla" checked /> Youla</label>
+              <label><input class="platform-toggle" type="checkbox" value="domclick" checked /> Domclick</label>
+            </div>
+            <div class="action-row">
+              <button id="generate-copy-button" class="btn btn-primary" type="button">Сгенерировать текст</button>
+              <button id="validate-button" class="btn btn-ghost" type="button">Проверить</button>
+              <button id="publish-button" class="btn btn-secondary" type="button">Собрать фиды</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="workspace">
+        <section class="workspace-card">
+          <div class="workspace-head">
+            <h3>Объекты</h3>
+            <button id="refresh-properties-button" class="mini-btn">Обновить</button>
+          </div>
+          <div id="property-list" class="property-list"></div>
+        </section>
+
+        <section class="workspace-card">
+          <div class="workspace-head">
+            <h3>AI / Snapshot</h3>
+            <span id="current-property-label">Объект не выбран</span>
+          </div>
+          <pre id="snapshot-output" class="output"></pre>
+        </section>
+
+        <section class="workspace-card">
+          <div class="workspace-head">
+            <h3>Публикация</h3>
+            <span>Фиды, ZIP и ошибки</span>
+          </div>
+          <div id="publication-output" class="rich-output"></div>
+        </section>
+
+        <section class="workspace-card">
+          <div class="workspace-head">
+            <h3>Системный лог</h3>
+            <span>Последние действия</span>
+          </div>
+          <div id="log-output" class="log-output"></div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
+
