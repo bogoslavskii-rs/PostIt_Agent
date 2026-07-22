@@ -1,50 +1,53 @@
 # PostIt Agent
 
-Python-first MVP scaffold для приложения, которое помогает риелтору:
+Локальный MVP для риелтора: одна карточка объекта → фото и голос → AI extraction → подтверждение полей → тексты под площадки → feed/assisted export → статусы публикаций.
 
-- быстро собрать единую карточку объекта;
-- прогнать голосовое описание через AI extraction;
-- сгенерировать тексты под площадки;
-- получить feed/XML/YRL и ZIP-пакет для ручной или semi-automatic публикации.
+README актуализирован под фактическое состояние проекта на Wednesday, July 22, 2026.
 
-Рабочая ветка реализации: `feature/ai-realtor-app`.
+## Что реально работает
 
-## Что уже есть
-
-- `FastAPI` backend с основными MVP-endpoint'ами из ТЗ.
-- Локальная `sqlite`-персистентность для dev-режима без внешней БД.
-- AI-слой с двумя режимами:
+- `FastAPI` backend с локальной `sqlite`-персистентностью.
+- Регистрация, вход, JWT и защищённые endpoint'ы.
+- Карточка объекта, профиль риелтора и список объектов.
+- Загрузка фото, фото-анализ, выбор обложки, изменение порядка, удаление media.
+- Загрузка аудиофайла или mock-транскрипта.
+- STT-провайдеры:
   - `mock` по умолчанию;
-  - `ollama` с усиленными prompt templates под русскую вторичную недвижимость.
-- STT-слой с `mock` и заготовкой под `whisper.cpp`.
-- Адаптеры площадок:
-  - `cian`
-  - `yandex_realty`
-  - `youla`
-  - `avito`
-  - `domclick`
-- Генерация:
-  - пользовательских feed-файлов;
-  - экспортного ZIP;
-  - `txt` и `docx` с копирайтом;
-  - локальных public URLs для media и feeds.
-- Мобильный web-shell `/`, через который можно пройти dev-сценарий end-to-end.
-- Docker-упаковка для локального старта проекта.
+  - `whisper.cpp` при настроенном бинарнике и модели.
+- AI extraction с сохранением `evidence` и обязательным подтверждением критичных AI-полей.
+- Генерация базового и платформенных текстов через `mock` или `ollama`.
+- Валидаторы площадок с честным блокированием неподтверждённых AI-полей.
+- Фиды для `CIAN` и `Yandex Realty`.
+- Assisted export для всех площадок: `ZIP`, `TXT`, `DOCX`, `JSON`, `HTML`.
+- `PublicationJob` со статусами `needs_review`, `waiting_for_platform`, `needs_action`, `published`, `deactivated`.
+- Web-shell на vanilla JS, пригодный для локального mock-flow.
+- Health/readiness endpoint'ы: `/health`, `/ready`.
+
+## Чего здесь пока нет
+
+- PostgreSQL / SQLAlchemy / Alembic как основной persistence-слой.
+- Redis и отдельный worker-процесс с очередью задач.
+- Подтверждённые прямые API-интеграции публикации на площадки.
+- Автоматическое подтверждение статуса публикации со стороны площадок.
+
+То есть текущая версия — честный локальный MVP-вертикальный срез, а не завершённая production-архитектура.
 
 ## Архитектура
 
 ```text
 src/postit_agent/
-  main.py         FastAPI app и HTTP API
-  services.py     Оркестрация сценариев MVP
-  repository.py   SQLite storage
-  ai.py           Mock/Ollama/whisper.cpp integration layer
-  adapters.py     Feed adapters per platform
+  main.py         FastAPI app, middleware, error envelope, versioned routes
+  services.py     Основная orchestration-логика MVP
+  repository.py   SQLite storage c JSON blobs
+  ai.py           Mock/Ollama extraction + copy, mock/whisper.cpp STT
+  adapters.py     Feed/export adapters per platform
   models.py       Pydantic domain models
-  static/         Mobile-first web UI
+  static/         Web-shell (HTML/CSS/vanilla JS)
 ```
 
-## Быстрый запуск локально
+Существующая архитектура сохранена, но усилена evidence-flow, media-операциями и versioned API вместо переписывания проекта с нуля.
+
+## Локальный запуск
 
 ```bash
 cp .env.example .env
@@ -52,151 +55,135 @@ make install
 make dev
 ```
 
-После старта открывай `http://localhost:8000/`.
+После старта доступны:
 
-По умолчанию проект поднимается в `mock`-режиме и не зависит от локальной LLM.
+- `http://localhost:8000/`
+- `http://localhost:8000/docs`
+- `http://localhost:8000/health`
+- `http://localhost:8000/ready`
 
-## Быстрый запуск в Docker
+## Docker
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-После этого приложение будет доступно на `http://localhost:8000/`.
+По умолчанию приложение запускается в `mock`-режиме и не требует внешней LLM.
 
-## Как включить Ollama
+## Основные переменные окружения
 
-### Вариант 1. Ollama у тебя на машине
+Смотри `.env.example`. Наиболее важные:
 
-```bash
-ollama pull qwen2.5:7b
-```
+```env
+POSTIT_ENVIRONMENT=development
+POSTIT_DEBUG=true
+POSTIT_HOST=0.0.0.0
+POSTIT_PORT=8000
 
-В `.env`:
+POSTIT_SECRET_KEY=change-me-in-production
+POSTIT_ACCESS_TOKEN_EXPIRE_MINUTES=10080
+POSTIT_PUBLIC_BASE_URL=http://localhost:8000
+POSTIT_CORS_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
 
-```bash
-POSTIT_AI_PROVIDER=ollama
+POSTIT_AI_PROVIDER=mock
 POSTIT_OLLAMA_BASE_URL=http://localhost:11434
 POSTIT_OLLAMA_MODEL=qwen2.5:7b
+
+POSTIT_STT_PROVIDER=mock
+POSTIT_WHISPER_CPP_BINARY=
+POSTIT_WHISPER_CPP_MODEL_PATH=
+
+POSTIT_MAX_UPLOAD_SIZE_MB=30
+POSTIT_ALLOWED_AUDIO_FORMATS=wav,mp3,m4a,ogg,webm,txt
+POSTIT_ALLOWED_IMAGE_FORMATS=jpg,jpeg,png,webp
 ```
 
-После этого запускай backend обычным способом:
+## Пользовательский сценарий MVP
 
-```bash
-make dev
-```
+1. Зарегистрироваться или войти.
+2. Заполнить профиль риелтора.
+3. Создать карточку объекта.
+4. Загрузить фотографии.
+5. Загрузить аудио или вставить mock-транскрипт.
+6. Нажать `Извлечь поля`.
+7. Подтвердить или отклонить AI-подсказки в блоке `AI Evidence`.
+8. Сгенерировать тексты.
+9. Проверить валидацию.
+10. Собрать публикации и assisted export.
 
-### Вариант 2. Ollama в Docker
+## API
 
-В `.env`:
+Поддерживаются совместимые старые маршруты и versioned route-set `api/v1`.
 
-```bash
-POSTIT_AI_PROVIDER=ollama
-POSTIT_OLLAMA_BASE_URL=http://ollama:11434
-POSTIT_OLLAMA_MODEL=qwen2.5:7b
-```
+Ключевые endpoint'ы:
 
-Подними стек:
+- `GET /health`
+- `GET /ready`
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/properties`
+- `GET /api/v1/properties`
+- `GET /api/v1/properties/{id}`
+- `PATCH /api/v1/properties/{id}`
+- `DELETE /api/v1/properties/{id}`
+- `POST /api/v1/properties/{id}/media`
+- `GET /api/v1/properties/{id}/media`
+- `PATCH /api/v1/properties/{id}/media/order`
+- `PATCH /api/v1/properties/{id}/media/{media_id}`
+- `DELETE /api/v1/properties/{id}/media/{media_id}`
+- `POST /api/v1/properties/{id}/transcriptions`
+- `POST /api/v1/properties/{id}/extract`
+- `POST /api/v1/properties/{id}/analyze-photos`
+- `POST /api/v1/properties/{id}/generate-copy`
+- `GET /api/v1/properties/{id}/evidence`
+- `POST /api/v1/properties/{id}/evidence/{evidence_id}/confirm`
+- `POST /api/v1/properties/{id}/evidence/{evidence_id}/reject`
+- `POST /api/v1/properties/{id}/validate`
+- `POST /api/v1/properties/{id}/publications`
+- `GET /api/v1/properties/{id}/publications`
+- `GET /api/v1/publications/{id}`
+- `POST /api/v1/publications/{id}/mark-published`
+- `POST /api/v1/publications/{id}/deactivate`
+- `GET /feeds/{user_id}/{platform}.xml`
+- `GET /exports/{export_id}.zip`
+- `GET /api/v1/exports/{export_id}`
 
-```bash
-docker compose --profile ollama up --build -d
-```
-
-Потом один раз закачай модель в контейнер:
-
-```bash
-docker exec -it postit-agent-ollama ollama pull qwen2.5:7b
-```
-
-Если Ollama недоступен или вернет плохой JSON, сервис мягко откатится на `mock`.
-
-## Что я усилил в Ollama-режиме
-
-- extraction prompt теперь возвращает полную схему полей, а не случайный частичный JSON;
-- добавлены нормализации под русскую недвижимость:
-  - `монолит -> monolith`
-  - `хороший ремонт -> good`
-  - `во двор -> yard`
-  - `12 500 000 ₽ -> 12500000`
-- copy prompt теперь отдельно учитывает ограничения `Avito`, `CIAN`, `Yandex Realty`, `Youla`, `Domclick`;
-- запросы в Ollama идут с настраиваемыми `temperature`, `top_p`, `repeat_penalty`, `num_ctx`, `num_predict`.
-
-Настройки лежат в `.env.example`.
-
-## Как тестить
-
-Автотесты:
-
-```bash
-make test
-```
-
-Быстрый smoke-check:
-
-```bash
-curl http://localhost:8000/health
-```
-
-Ожидаемый ответ:
+Все ошибки возвращаются в едином envelope:
 
 ```json
-{"status":"ok","environment":"development"}
+{
+  "error": {
+    "code": "validation_error",
+    "message": "...",
+    "details": []
+  },
+  "request_id": "..."
+}
 ```
 
-Полный пошаговый сценарий запуска, Docker, Ollama и ручной smoke лежит в [docs/TESTING.md](/home/anderrated/work/projects/PostIt_Agent/docs/TESTING.md).
+## Ограничения интеграций
 
-## Dev-сценарий через UI
+- `CIAN` — feed / manual import через XML.
+- `Yandex Realty` — feed / manual import через YRL.
+- `Avito` — `user_assisted`, XML и пакет для ручной публикации.
+- `Youla` — `url_feed`, если аккаунт так настроен; иначе manual/user-assisted.
+- `Domclick` — только assisted/manual сценарий, без имитации прямой публикации.
 
-1. Регистрируешь аккаунт.
-2. Заполняешь профиль и режимы автозагрузки по площадкам.
-3. Создаешь объект.
-4. Грузишь фото.
-5. Вставляешь транскрипт голоса.
-6. Жмешь:
-   - `Извлечь поля`
-   - `Сгенерировать текст`
-   - `Проверить`
-   - `Собрать фиды`
-7. На выходе получаешь:
-   - feed URL на пользователя и площадку;
-   - ZIP-пакет;
-   - список platform jobs и ошибок.
+Ни одна площадка не помечается как «автоматически опубликована», пока пользователь явно не подтвердит результат или не сохранит внешний URL объявления.
 
-## Полезные команды
+## Тесты и smoke
 
 ```bash
-make install
-make dev
 make test
-make smoke
-make docker-build
-make docker-up
-make docker-up-ollama
-make docker-down
 ```
 
-## Что важно понимать
+Локально проверены:
 
-- `CIAN`, `Yandex Realty` и `Youla` в коде отражены как feed-first интеграции.
-- `Avito` и `Domclick` пока заложены как MVP/draft adapters с честным fallback на `user_assisted` или `manual_export`.
-- Dev storage локальный:
-  - база: `data/postit_agent.sqlite3`
-  - медиа: `data/storage`
-  - фиды: `data/feeds`
-  - архивы: `data/exports`
+- unit-тесты mock AI/adapters;
+- service-level smoke сценарий полного mock-flow;
+- media reorder / cover update;
+- pending evidence блокирует публикацию до подтверждения или отклонения.
 
-## Источники для интеграций
-
-- CIAN XML docs: `https://www.cian.ru/xml_import/doc/`
-- Yandex Realty feed docs: `https://yandex.ru/support/realty/ru/feed/content-requirements`
-- Youla autoload docs: `https://help.youla.ru/level-3/avtozagruzka-obyavleniy`
-- Avito autoload template: `https://www.avito.ru/autoload/documentation/templates/67067?fileFormat=xml`
-
-## Следующий разумный шаг
-
-- заменить dev `sqlite` на `PostgreSQL`;
-- вынести фоновые задачи в `Redis + worker`;
-- добавить реальный mobile-клиент;
-- ужесточить схемы feed-валидаторов под боевые форматы площадок;
-- подключить `whisper.cpp` или другой локальный STT по-настоящему.
+Подробности — в `docs/TESTING.md`.

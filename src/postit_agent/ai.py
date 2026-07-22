@@ -200,21 +200,21 @@ class MockAIProvider(AIProvider):
 
         price = self._extract_price(transcript)
         if price is not None:
-            fields["price"] = AIFieldValue(value=price, confidence=0.95)
+            fields["price"] = AIFieldValue(value=price, confidence=0.95, source_quote=self._quote(transcript, "цена"))
 
         rooms = self._extract_rooms(transcript)
         if rooms is not None:
-            fields["rooms"] = AIFieldValue(value=rooms, confidence=0.93)
+            fields["rooms"] = AIFieldValue(value=rooms, confidence=0.93, source_quote=self._quote(transcript, "комн"))
 
         if match := re.search(r"(\d+(?:[.,]\d+)?)\s*(?:квадрат|кв(?:\.|\s*м)|метр)", transcript):
-            fields["area_total"] = AIFieldValue(value=float(match.group(1).replace(",", ".")), confidence=0.92)
+            fields["area_total"] = AIFieldValue(value=float(match.group(1).replace(",", ".")), confidence=0.92, source_quote=match.group(0))
 
         if match := re.search(r"кухн[яи]?\s*(\d+(?:[.,]\d+)?)", transcript):
-            fields["area_kitchen"] = AIFieldValue(value=float(match.group(1).replace(",", ".")), confidence=0.88)
+            fields["area_kitchen"] = AIFieldValue(value=float(match.group(1).replace(",", ".")), confidence=0.88, source_quote=match.group(0))
 
         if match := re.search(r"(\d+)\s*этаж(?:а|е)?\s*из\s*(\d+)", transcript):
-            fields["floor"] = AIFieldValue(value=int(match.group(1)), confidence=0.95)
-            fields["floors_total"] = AIFieldValue(value=int(match.group(2)), confidence=0.95)
+            fields["floor"] = AIFieldValue(value=int(match.group(1)), confidence=0.95, source_quote=match.group(0))
+            fields["floors_total"] = AIFieldValue(value=int(match.group(2)), confidence=0.95, source_quote=match.group(0))
 
         for keyword, normalized in {
             "монолит": "monolith",
@@ -223,7 +223,7 @@ class MockAIProvider(AIProvider):
             "блок": "block",
         }.items():
             if keyword in transcript:
-                fields["building_type"] = AIFieldValue(value=normalized, confidence=0.82)
+                fields["building_type"] = AIFieldValue(value=normalized, confidence=0.82, source_quote=keyword)
                 break
 
         for keyword, normalized in {
@@ -234,29 +234,36 @@ class MockAIProvider(AIProvider):
             "без ремонта": "needs_repair",
         }.items():
             if keyword in transcript:
-                fields["renovation"] = AIFieldValue(value=normalized, confidence=0.8)
+                fields["renovation"] = AIFieldValue(value=normalized, confidence=0.8, source_quote=keyword)
                 break
 
         if "во двор" in transcript:
-            fields["windows_view"] = AIFieldValue(value="yard", confidence=0.86)
+            fields["windows_view"] = AIFieldValue(value="yard", confidence=0.86, source_quote="во двор")
         elif "на улицу" in transcript:
-            fields["windows_view"] = AIFieldValue(value="street", confidence=0.86)
+            fields["windows_view"] = AIFieldValue(value="street", confidence=0.86, source_quote="на улицу")
 
         if "лодж" in transcript:
-            fields["balcony"] = AIFieldValue(value="loggia", confidence=0.82)
+            fields["balcony"] = AIFieldValue(value="loggia", confidence=0.82, source_quote="лодж")
         elif "балкон" in transcript:
-            fields["balcony"] = AIFieldValue(value="balcony", confidence=0.82)
+            fields["balcony"] = AIFieldValue(value="balcony", confidence=0.82, source_quote="балкон")
 
         if match := re.search(r"(москва|санкт-петербург|казань|сочи|екатеринбург|новосибирск|краснодар)", transcript):
-            fields["city"] = AIFieldValue(value=match.group(1).title(), confidence=0.72)
+            fields["city"] = AIFieldValue(value=match.group(1).title(), confidence=0.72, source_quote=match.group(0))
 
         if match := re.search(r"(?:улица|ул\.?)\s+([а-яa-z0-9\- ]+)", transcript):
-            fields["street"] = AIFieldValue(value=match.group(1).strip().title(), confidence=0.66)
+            fields["street"] = AIFieldValue(value=match.group(1).strip().title(), confidence=0.66, source_quote=match.group(0))
 
         if match := re.search(r"(?:дом|д\.)\s*([0-9а-яa-z\-]+)", transcript):
-            fields["house"] = AIFieldValue(value=match.group(1).strip(), confidence=0.7)
+            fields["house"] = AIFieldValue(value=match.group(1).strip(), confidence=0.7, source_quote=match.group(0))
 
         return fields
+
+    def _quote(self, transcript: str, keyword: str) -> str | None:
+        for chunk in re.split(r"[,.]", transcript):
+            if keyword in chunk:
+                compact = chunk.strip()
+                return compact or None
+        return None
 
     def generate_copy(self, snapshot: PropertySnapshot, platforms: list[Platform]) -> GeneratedCopy:
         property_record = snapshot.property
@@ -555,13 +562,20 @@ def build_extraction_prompts(snapshot: PropertySnapshot) -> tuple[str, str]:
         "- windows_view только из [yard, street, mixed].\n"
         "- balcony только из [none, balcony, loggia, both].\n"
         "- confidence: число от 0 до 1.\n"
-        "Ответ должен содержать все ключи схемы, даже если часть значений null."
+            "Ответ должен содержать все ключи схемы, даже если часть значений null."
     )
     existing = snapshot.property.model_dump(mode="json")
     user_prompt = (
         "Схема результата:\n"
         + json.dumps(
-            {key: {"value": EXTRACTION_SCHEMA_DESCRIPTION[key], "confidence": "0..1"} for key in EXTRACTION_SCHEMA_KEYS},
+            {
+                key: {
+                    "value": EXTRACTION_SCHEMA_DESCRIPTION[key],
+                    "confidence": "0..1",
+                    "source_quote": "fragment from transcript or null",
+                }
+                for key in EXTRACTION_SCHEMA_KEYS
+            },
             ensure_ascii=False,
             indent=2,
         )
@@ -569,13 +583,13 @@ def build_extraction_prompts(snapshot: PropertySnapshot) -> tuple[str, str]:
         + "Пример:\n"
         + json.dumps(
             {
-                "rooms": {"value": 2, "confidence": 0.98},
-                "area_total": {"value": 54, "confidence": 0.95},
-                "floor": {"value": 5, "confidence": 0.95},
-                "floors_total": {"value": 17, "confidence": 0.95},
-                "area_kitchen": {"value": 10, "confidence": 0.9},
-                "building_type": {"value": "monolith", "confidence": 0.8},
-                "price": {"value": 12500000, "confidence": 0.95},
+                "rooms": {"value": 2, "confidence": 0.98, "source_quote": "двушка"},
+                "area_total": {"value": 54, "confidence": 0.95, "source_quote": "54 квадрата"},
+                "floor": {"value": 5, "confidence": 0.95, "source_quote": "5 этаж из 17"},
+                "floors_total": {"value": 17, "confidence": 0.95, "source_quote": "5 этаж из 17"},
+                "area_kitchen": {"value": 10, "confidence": 0.9, "source_quote": "кухня 10"},
+                "building_type": {"value": "monolith", "confidence": 0.8, "source_quote": "монолит"},
+                "price": {"value": 12500000, "confidence": 0.95, "source_quote": "12 миллионов 500"},
             },
             ensure_ascii=False,
             indent=2,
@@ -645,7 +659,12 @@ def normalize_extraction_payload(payload: dict[str, Any]) -> dict[str, AIFieldVa
             continue
         value = normalize_field_value(key, raw_value.get("value"))
         confidence = normalize_confidence(raw_value.get("confidence"))
-        normalized[key] = AIFieldValue(value=value, confidence=confidence)
+        source_quote = raw_value.get("source_quote")
+        normalized[key] = AIFieldValue(
+            value=value,
+            confidence=confidence,
+            source_quote=str(source_quote).strip() if source_quote is not None else None,
+        )
     return normalized
 
 

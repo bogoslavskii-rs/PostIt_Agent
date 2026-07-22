@@ -368,6 +368,29 @@ input[type="checkbox"] {
   background: rgba(255, 255, 255, 0.68);
 }
 
+.media-card,
+.evidence-card {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.media-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 0.9rem;
+  background: rgba(17, 30, 40, 0.06);
+}
+
+.media-actions {
+  flex-wrap: wrap;
+}
+
+.danger-btn {
+  color: #9a2e20;
+  background: rgba(215, 75, 32, 0.08);
+}
+
 .link-list a {
   color: var(--secondary);
   font-weight: 700;
@@ -419,4 +442,3 @@ input[type="checkbox"] {
     grid-template-columns: 1fr;
   }
 }
-

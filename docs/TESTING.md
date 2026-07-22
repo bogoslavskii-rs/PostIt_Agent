@@ -1,5 +1,7 @@
 # Запуск и тестирование
 
+Документ синхронизирован с текущим состоянием проекта на Wednesday, July 22, 2026.
+
 ## 1. Локальный запуск без Docker
 
 ```bash
@@ -8,105 +10,20 @@ make install
 make dev
 ```
 
-После старта открой `http://localhost:8000/`.
+Открой:
 
-По умолчанию backend работает в `mock`-режиме и не требует локальной LLM.
+- `http://localhost:8000/`
+- `http://localhost:8000/docs`
+- `http://localhost:8000/health`
+- `http://localhost:8000/ready`
 
-## 2. Локальный запуск с Ollama
+## 2. Mock-flow через UI
 
-1. Подними Ollama на своей машине или в Docker.
-2. Загрузи модель:
-
-```bash
-ollama pull qwen2.5:7b
-```
-
-3. В `.env` включи:
-
-```bash
-POSTIT_AI_PROVIDER=ollama
-POSTIT_OLLAMA_BASE_URL=http://localhost:11434
-POSTIT_OLLAMA_MODEL=qwen2.5:7b
-```
-
-4. Запусти приложение:
-
-```bash
-make dev
-```
-
-## 3. Docker без Ollama
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-Открой `http://localhost:8000/`.
-
-В этом режиме приложение стартует с `mock` AI, если ты не менял `.env`.
-
-## 4. Docker вместе с Ollama
-
-1. В `.env` выставь:
-
-```bash
-POSTIT_AI_PROVIDER=ollama
-POSTIT_OLLAMA_BASE_URL=http://ollama:11434
-POSTIT_OLLAMA_MODEL=qwen2.5:7b
-```
-
-2. Подними сервисы:
-
-```bash
-docker compose --profile ollama up --build -d
-```
-
-3. Один раз загрузи модель внутрь контейнера:
-
-```bash
-docker exec -it postit-agent-ollama ollama pull qwen2.5:7b
-```
-
-4. Проверь, что Ollama отвечает:
-
-```bash
-curl http://localhost:11434/api/tags
-```
-
-## 5. Автотесты
-
-```bash
-make test
-```
-
-Сейчас тесты покрывают:
-
-- mock extraction;
-- базовую валидацию адаптеров;
-- генерацию Yandex feed;
-- сборку усиленных Ollama prompt templates;
-- нормализацию ответа LLM в типы домена.
-
-## 6. Быстрый smoke-check API
-
-```bash
-curl http://localhost:8000/health
-```
-
-Ожидаемый ответ:
-
-```json
-{"status":"ok","environment":"development"}
-```
-
-## 7. Ручной smoke-сценарий через UI
-
-1. Зарегистрируйся на главной странице.
-2. Заполни профиль риелтора.
-3. Создай объект.
-4. Загрузи 5+ фото.
-5. Вставь транскрипт:
+1. Зарегистрируйся.
+2. Заполни профиль.
+3. Создай объект и включи `Карточка подтверждена`.
+4. Загрузи минимум 5 фото.
+5. Добавь аудиофайл или вставь mock-транскрипт:
 
 ```text
 Двушка, 54 квадрата, 5 этаж из 17, кухня 10, монолит, хороший ремонт, окна во двор, цена 12 миллионов 500.
@@ -115,30 +32,45 @@ curl http://localhost:8000/health
 6. Нажми:
    - `Сохранить голосовую заметку`
    - `Извлечь поля`
+   - в блоке `AI Evidence` подтверждай или отклоняй подсказки
    - `Сгенерировать текст`
    - `Проверить`
    - `Собрать фиды`
 7. Проверь:
-   - что появился ZIP;
-   - что открываются feed URLs;
-   - что в snapshot справа лежат извлеченные поля и platform payloads.
+   - ZIP assisted-пакет;
+   - feed URL для `CIAN` и `Yandex Realty`;
+   - HTML/JSON/TXT/DOCX внутри архива;
+   - статусы `PublicationJob`.
 
-## 8. Что смотреть при проблемах
-
-- backend logs:
-
-```bash
-docker compose logs -f app
-```
-
-- ollama logs:
+## 3. Автотесты
 
 ```bash
-docker compose logs -f ollama
+make test
 ```
 
-- локальная база и артефакты:
-  - `data/postit_agent.sqlite3`
-  - `data/storage`
-  - `data/feeds`
-  - `data/exports`
+Локально проверено:
+
+- `9 passed`.
+
+## 4. Quick smoke в CLI
+
+```bash
+PYTHONPATH=src .venv/bin/python -m py_compile src/postit_agent/*.py tests/*.py
+PYTHONPATH=src .venv/bin/pytest -q
+```
+
+## 5. Docker
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Этот режим тоже стартует в `mock`-конфигурации, если не менялись AI/STT env-переменные.
+
+## 6. Ограничения текущей версии
+
+- SQLite остаётся основным storage-слоем локального MVP.
+- Нет Redis worker-а и внешней очереди задач.
+- Нет подтверждённых прямых publish API на площадки.
+- `mark-published` используется как честная ручная фиксация результата после внешнего действия пользователя.
