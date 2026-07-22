@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterable
@@ -10,6 +12,16 @@ from .models import Platform, PlatformCopy, PlatformPayloadRecord, PlatformValid
 
 
 YRL_NAMESPACE = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06"
+CRITICAL_PENDING_FIELDS = {
+    "city": "Город",
+    "street": "Улица",
+    "house": "Дом",
+    "price": "Цена",
+    "rooms": "Количество комнат",
+    "area_total": "Общая площадь",
+    "floor": "Этаж",
+    "floors_total": "Этажность дома",
+}
 
 
 @dataclass
@@ -55,6 +67,15 @@ class BasePlatformAdapter:
         if not (contacts.contact_phone or snapshot.profile.contact_phone):
             errors.append("Не заполнен контактный телефон.")
 
+        for evidence in snapshot.evidence:
+            if evidence.field_name not in CRITICAL_PENDING_FIELDS:
+                continue
+            if evidence.is_confirmed or evidence.is_rejected:
+                continue
+            errors.append(
+                f"{CRITICAL_PENDING_FIELDS[evidence.field_name]} заполнено AI и требует подтверждения пользователем."
+            )
+
         return PlatformValidationResult(
             platform=self.platform,
             ready=not errors,
@@ -96,18 +117,59 @@ class BasePlatformAdapter:
             f"{listing.payload.title}\n\n{listing.payload.description}\n\n"
             + "\n".join(f"- {item}" for item in listing.payload.payload.get("highlights", []))
         ).encode("utf-8")
+        payload_json = json.dumps(listing.payload.model_dump(mode="json"), ensure_ascii=False, indent=2).encode("utf-8")
+        manual_html = self.manual_html(listing).encode("utf-8")
         return {
             f"platforms/{self.platform.value}.{self.feed_extension}": single_feed,
             f"text/{self.platform.value}.txt": listing_copy,
             f"instructions/{self.platform.value}.md": manual_notes,
+            f"payloads/{self.platform.value}.json": payload_json,
+            f"html/{self.platform.value}.html": manual_html,
         }
 
     def manual_notes(self, profile: Profile) -> str:
+        create_url_note = ""
+        if create_url := getattr(profile, "model_extra", None):  # pragma: no cover - defensive
+            create_url_note = str(create_url)
         return (
             f"# {self.platform.value}\n\n"
             f"Канал для этого аккаунта: {self.validation_channel(profile).value}.\n"
             "Если площадка не принимает прямой URL-фид из вашего кабинета, используйте XML/YRL из архива "
             "и завершите публикацию вручную на стороне площадки."
+        )
+
+    def manual_html(self, listing: ListingWithPayload) -> str:
+        payload = listing.payload.payload
+        create_url = payload.get("create_url")
+        link_block = (
+            f'<p><a href="{html.escape(create_url)}" target="_blank" rel="noreferrer">Открыть экран создания объявления</a></p>'
+            if create_url
+            else "<p>Ссылка на экран создания объявления не настроена в конфигурации.</p>"
+        )
+        fields = "".join(
+            f"<tr><th>{html.escape(str(key))}</th><td>{html.escape(str(value))}</td></tr>"
+            for key, value in payload.items()
+            if key not in {"photos", "highlights"}
+        )
+        highlights = "".join(f"<li>{html.escape(str(item))}</li>" for item in payload.get("highlights", []))
+        photos = "".join(
+            f'<li><a href="{html.escape(url)}" target="_blank" rel="noreferrer">{html.escape(url)}</a></li>'
+            for url in payload.get("photos", [])
+        )
+        return (
+            "<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\"><title>Assisted export</title>"
+            "<style>body{font-family:system-ui,sans-serif;max-width:980px;margin:0 auto;padding:24px;line-height:1.5}"
+            "table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}"
+            "pre{white-space:pre-wrap;background:#f6f6f6;padding:12px;border-radius:8px}</style></head><body>"
+            f"<h1>{html.escape(listing.payload.title)}</h1>"
+            f"<p><strong>Площадка:</strong> {html.escape(self.platform.value)}</p>"
+            f"<p><strong>Канал:</strong> {html.escape(listing.payload.validation.channel.value)}</p>"
+            f"{link_block}"
+            f"<h2>Описание</h2><pre>{html.escape(listing.payload.description)}</pre>"
+            f"<h2>Преимущества</h2><ul>{highlights}</ul>"
+            f"<h2>Подготовленные поля</h2><table>{fields}</table>"
+            f"<h2>Фотографии</h2><ul>{photos}</ul>"
+            "</body></html>"
         )
 
     @staticmethod

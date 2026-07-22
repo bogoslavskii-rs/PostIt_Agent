@@ -129,6 +129,7 @@
           <div class="stack-form">
             <input id="photo-files" type="file" accept="image/*" multiple />
             <button id="upload-photos-button" class="btn btn-ghost" type="button">Загрузить фото</button>
+            <input id="voice-file" type="file" accept=".wav,.mp3,.m4a,.ogg,.webm,audio/*" />
             <textarea id="voice-transcript" rows="5" placeholder="Надиктуй факты об объекте или вставь транскрипт сюда"></textarea>
             <button id="upload-voice-button" class="btn btn-secondary" type="button">Сохранить голосовую заметку</button>
             <button id="extract-button" class="btn btn-ghost" type="button">Извлечь поля из речи</button>
@@ -176,6 +177,22 @@
 
         <section class="workspace-card">
           <div class="workspace-head">
+            <h3>Медиа</h3>
+            <span>Обложка и порядок фото</span>
+          </div>
+          <div id="media-output" class="rich-output"></div>
+        </section>
+
+        <section class="workspace-card">
+          <div class="workspace-head">
+            <h3>AI Evidence</h3>
+            <span>Подтверждение извлечённых полей</span>
+          </div>
+          <div id="evidence-output" class="rich-output"></div>
+        </section>
+
+        <section class="workspace-card">
+          <div class="workspace-head">
             <h3>Публикация</h3>
             <span>Фиды, ZIP и ошибки</span>
           </div>
@@ -195,4 +212,3 @@
     <script src="/static/app.js"></script>
   </body>
 </html>
-

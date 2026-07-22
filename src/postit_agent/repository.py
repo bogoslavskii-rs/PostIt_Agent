@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
 from pydantic import BaseModel
 
-from .models import FeedFileRecord, GenerationRecord, PhotoRecord, Platform, PlatformPayloadRecord, Profile, PropertyRecord, PublicationJobRecord, UserResponse, VoiceNoteRecord
+from .models import FeedFileRecord, GenerationRecord, PhotoRecord, Platform, PlatformPayloadRecord, Profile, PropertyFieldEvidence, PropertyRecord, PublicationJobRecord, UserResponse, VoiceNoteRecord
 
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -108,8 +108,24 @@ class Repository:
                     data TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_publication_jobs_property_id ON publication_jobs(property_id);
+
+                CREATE TABLE IF NOT EXISTS property_evidence (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    property_id TEXT NOT NULL,
+                    field_name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    data TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_property_evidence_property_id ON property_evidence(property_id);
                 """
             )
+
+    def ping(self) -> bool:
+        with self.connect() as connection:
+            connection.execute("SELECT 1").fetchone()
+        return True
 
     @staticmethod
     def _dump(model: BaseModel) -> str:
@@ -121,7 +137,7 @@ class Repository:
 
     @staticmethod
     def _utcnow() -> str:
-        return datetime.utcnow().isoformat()
+        return datetime.now(UTC).isoformat()
 
     def create_user(self, user: UserResponse, password_hash: str) -> None:
         with self.connect() as connection:
@@ -217,6 +233,12 @@ class Repository:
             ).fetchall()
         return [self._load(row["data"], PropertyRecord) for row in rows]
 
+    def delete_property(self, user_id: str, property_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM properties WHERE id = ? AND user_id = ?", (property_id, user_id))
+            for table in ("photos", "voice_notes", "ai_generations", "platform_payloads", "publication_jobs", "property_evidence"):
+                connection.execute(f"DELETE FROM {table} WHERE property_id = ? AND user_id = ?", (property_id, user_id))
+
     def save_photo(self, photo: PhotoRecord) -> None:
         with self.connect() as connection:
             connection.execute(
@@ -234,7 +256,18 @@ class Repository:
                 "SELECT data FROM photos WHERE property_id = ? AND user_id = ? ORDER BY created_at ASC",
                 (property_id, user_id),
             ).fetchall()
-        return [self._load(row["data"], PhotoRecord) for row in rows]
+        photos = [self._load(row["data"], PhotoRecord) for row in rows]
+        return sorted(photos, key=lambda item: (item.order_index, item.created_at))
+
+    def get_photo(self, user_id: str, property_id: str, photo_id: str) -> PhotoRecord | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT data FROM photos WHERE id = ? AND property_id = ? AND user_id = ?",
+                (photo_id, property_id, user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._load(row["data"], PhotoRecord)
 
     def replace_photos(self, photos: list[PhotoRecord]) -> None:
         with self.connect() as connection:
@@ -243,6 +276,13 @@ class Repository:
                     "UPDATE photos SET data = ? WHERE id = ?",
                     (self._dump(photo), photo.id),
                 )
+
+    def delete_photo(self, user_id: str, property_id: str, photo_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "DELETE FROM photos WHERE id = ? AND property_id = ? AND user_id = ?",
+                (photo_id, property_id, user_id),
+            )
 
     def save_voice_note(self, voice_note: VoiceNoteRecord) -> None:
         with self.connect() as connection:
@@ -268,6 +308,23 @@ class Repository:
                 (property_id, user_id),
             ).fetchall()
         return [self._load(row["data"], VoiceNoteRecord) for row in rows]
+
+    def get_voice_note(self, user_id: str, property_id: str, voice_note_id: str) -> VoiceNoteRecord | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT data FROM voice_notes WHERE id = ? AND property_id = ? AND user_id = ?",
+                (voice_note_id, property_id, user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._load(row["data"], VoiceNoteRecord)
+
+    def delete_voice_note(self, user_id: str, property_id: str, voice_note_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "DELETE FROM voice_notes WHERE id = ? AND property_id = ? AND user_id = ?",
+                (voice_note_id, property_id, user_id),
+            )
 
     def save_generation(self, generation: GenerationRecord) -> None:
         with self.connect() as connection:
@@ -369,6 +426,16 @@ class Repository:
                 ),
             )
 
+    def get_publication_job(self, user_id: str, publication_id: str) -> PublicationJobRecord | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT data FROM publication_jobs WHERE id = ? AND user_id = ?",
+                (publication_id, user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._load(row["data"], PublicationJobRecord)
+
     def list_publication_jobs(self, user_id: str, property_id: str) -> list[PublicationJobRecord]:
         with self.connect() as connection:
             rows = connection.execute(
@@ -376,3 +443,49 @@ class Repository:
                 (property_id, user_id),
             ).fetchall()
         return [self._load(row["data"], PublicationJobRecord) for row in rows]
+
+    def save_evidence(self, evidence: PropertyFieldEvidence) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO property_evidence (id, user_id, property_id, field_name, created_at, updated_at, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
+                """,
+                (
+                    evidence.id,
+                    evidence.user_id,
+                    evidence.property_id,
+                    evidence.field_name,
+                    evidence.created_at.isoformat(),
+                    evidence.updated_at.isoformat(),
+                    self._dump(evidence),
+                ),
+            )
+
+    def get_evidence(self, user_id: str, property_id: str, evidence_id: str) -> PropertyFieldEvidence | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT data FROM property_evidence WHERE id = ? AND property_id = ? AND user_id = ?",
+                (evidence_id, property_id, user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._load(row["data"], PropertyFieldEvidence)
+
+    def list_evidence(self, user_id: str, property_id: str) -> list[PropertyFieldEvidence]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT data FROM property_evidence WHERE property_id = ? AND user_id = ? ORDER BY updated_at DESC, created_at DESC",
+                (property_id, user_id),
+            ).fetchall()
+        return [self._load(row["data"], PropertyFieldEvidence) for row in rows]
+
+    def reject_pending_evidence(self, user_id: str, property_id: str, field_names: list[str]) -> None:
+        evidence_items = self.list_evidence(user_id, property_id)
+        for evidence in evidence_items:
+            if evidence.field_name not in field_names or evidence.is_confirmed or evidence.is_rejected:
+                continue
+            self.save_evidence(
+                evidence.model_copy(update={"is_rejected": True, "updated_at": datetime.now(UTC)})
+            )
